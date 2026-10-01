@@ -46,8 +46,13 @@ describe('reservation API conforms to Quint spec', () => {
 
       const app = createApp(Number(states[0].stock)) // 初期状態から実装を作る
 
+      // 値を人間が読める形に整形する（bigint は string 化してから JSON.stringify に渡す）
+      const fmt = (v: unknown): string =>
+        JSON.stringify(v, (_k, val) => (typeof val === 'bigint' ? val.toString() : val))
+
       for (const [i, s] of states.entries()) {
         const req = s.lastRequest
+        const ctx = `trace=${file} seed=${SEED} step=${i} request=${req.tag}(${fmt(req.value)})`
 
         // (a) 仕様が受けたリクエストを、そのまま API に送る
         let res: Response | undefined
@@ -63,18 +68,27 @@ describe('reservation API conforms to Quint spec', () => {
 
         // (b) ステータスが仕様と一致するか
         if (res) {
-          expect(res.status, `step ${i}: ${req.tag}(${req.value})`).toBe(Number(s.lastStatus))
+          expect(
+            res.status,
+            `[${ctx}] 期待したHTTPステータスと一致しない (expected=${s.lastStatus}, actual=${res.status})`,
+          ).toBe(Number(s.lastStatus))
         }
 
         // (c) 観測できる状態が仕様と一致するか
         const stock = (await (await app.request('/stock')).json()).stock
-        expect(stock, `step ${i}: stock`).toBe(Number(s.stock))
+        expect(
+          stock,
+          `[${ctx}] stock が仕様と一致しない (expected=${s.stock}, actual=${stock})`,
+        ).toBe(Number(s.stock))
 
         const list = (await (await app.request('/reservations')).json()) as { id: number; user: string }[]
         const expected = [...s.reservations]
           .map(([id, user]) => ({ id: Number(id), user }))
           .sort((a, b) => a.id - b.id)
-        expect(list.sort((a, b) => a.id - b.id), `step ${i}: reservations`).toEqual(expected)
+        expect(
+          list.sort((a, b) => a.id - b.id),
+          `[${ctx}] reservations 一覧が仕様と一致しない (expected=${fmt(expected)}, actual=${fmt(list)})`,
+        ).toEqual(expected)
       }
     })
   }
